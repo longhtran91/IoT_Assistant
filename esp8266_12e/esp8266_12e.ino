@@ -1,17 +1,19 @@
 #include <ESP8266WiFi.h>
-#include <WiFiClient.h>
+//#include <WiFiClient.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <Wire.h>
+#include <ArduinoJson.h>
 
-const char *ssid = "ssid";
-const char *password = "password";
+const char *ssid = "";
+const char *password = "";
 const char *domain = "esp8266";
-const int wifi_port = 8080;
+//const int wifi_port = 8080;
 const int web_port = 80;
+String json = "";
 ESP8266WebServer web_server(web_port);
-WiFiServer wifi_server(wifi_port);
-WiFiClient wifi_client;
+//WiFiServer wifi_server(wifi_port);
+//WiFiClient wifi_client;
 
 
 boolean wifiConnected = false;
@@ -28,6 +30,7 @@ String data;
 
 void setup(void) {
   Serial.begin(115200);
+  Wire.begin(D5, D6); /* join i2c bus with SDA=D5 and SCL=D6 of NodeMCU */
 
   // Initialize wifi connection
   wifiConnected = connectWifi();
@@ -48,19 +51,19 @@ void setup(void) {
   }
 
   // Initialize web server
-  //startWebServer();
+  startWebServer();
 
   //initialize TCPIP connection
-  startWifiServer();
+  //startWifiServer();
 
-  Wire.begin(D1, D2); /* join i2c bus with SDA=D1 and SCL=D2 of NodeMCU */
+
 }
 
 void loop(void) {
   web_server.handleClient();
   MDNS.update();
-  wifi_client = wifi_server.available();
-  if (wifi_client) {                             // If a new client connects,
+  /*wifi_client = wifi_server.available();
+    if (wifi_client) {                             // If a new client connects,
     Serial.println("New Client.");          // print a message out in the serial port
     String currentLine = "";                // make a String to hold incoming data from the client
     currentTime = millis();
@@ -77,7 +80,7 @@ void loop(void) {
         }
       }
     }
-  }
+    }*/
 }
 
 // connect to wifi – returns true if successful or false if not
@@ -119,7 +122,7 @@ boolean connectWifi() {
 boolean startMDNSResponder() {
   return MDNS.begin(domain);
 }
-/*
+
 void handleRoot() {
   char temp[400];
   int sec = millis() / 1000;
@@ -164,21 +167,83 @@ void handleNotFound() {
   web_server.send(404, "text/plain", message);
 }
 
+void handleRedlight() {
+  if (web_server.hasArg("plain") == false) { //Check if body received
+    web_server.send(200, "text/plain", "Body not received");
+    return;
+  }
+  else
+  {
+    json = web_server.arg("plain");
+    Serial.println(json);
+    DynamicJsonDocument jsonDoc(1024);
+    auto error = deserializeJson(jsonDoc, json);
+    if (error) {
+      Serial.print(F("deserializeJson() failed with code "));
+      Serial.println(error.c_str());
+      return;
+    }
+    else
+    {
+      const char* redlight_status = jsonDoc["redlight"];
+      web_server.send(200, "text/plain", redlight_status);
+      if (strcmp(redlight_status, "on") == 0)
+      {
+        Wire.beginTransmission(8);
+        Wire.write("0-1");
+        Wire.endTransmission();
+      }
+      else if (strcmp(redlight_status, "off") == 0)
+      {
+        Wire.beginTransmission(8);
+        Wire.write("0-0");
+        Wire.endTransmission();
+      }
+    }
+  }
+}
+
+void handleTimer()
+{
+  if (web_server.hasArg("plain") == false) { //Check if body received
+    web_server.send(200, "text/plain", "Body not received");
+    return;
+  }
+  else
+  {
+    json = web_server.arg("plain");
+    Serial.println(json);
+    DynamicJsonDocument jsonDoc(1024);
+    auto error = deserializeJson(jsonDoc, json);
+    if (error) {
+      Serial.print(F("deserializeJson() failed with code "));
+      Serial.println(error.c_str());
+      return;
+    }
+    else
+    {
+      String duraionInSeconds = jsonDoc["timer"];
+      char buffers[duraionInSeconds.length() + 3];
+      strcpy(buffers, "1-");
+      strcat(buffers, duraionInSeconds.c_str());
+      web_server.send(200, "text/plain", duraionInSeconds);
+      Wire.beginTransmission(8);
+      Wire.write(buffers);
+      Wire.endTransmission();
+    }
+  }
+}
+
 void startWebServer() {
   web_server.on("/", handleRoot);
   web_server.onNotFound(handleNotFound);
+  web_server.on("/redlight", HTTP_POST, handleRedlight);
+  web_server.on("/timer", HTTP_POST, handleTimer);
   web_server.begin();
   Serial.print("HTTP server started at port ");
   Serial.println(web_port);
 }
-*/
-void startWifiServer() {
-  wifi_server.begin();
-}
 
-void transmit2Arduino(const char* s) {
-  //Serial.println("Begin transmitting");
-  Wire.beginTransmission(8); /* begin with device address 8 */
-  Wire.write(s);
-  Wire.endTransmission();    /* stop transmitting */
-}
+/*void startWifiServer() {
+  wifi_server.begin();
+  }*/
